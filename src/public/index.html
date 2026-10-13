@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Asistencia - Prácticas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #1E293B; }
+    .dashtail-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  </style>
+</head>
+<body class="p-6 md:p-10">
+  <div class="max-w-5xl mx-auto space-y-6">
+    <!-- Barra de Navegación Superior -->
+    <header class="dashtail-card p-5 flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Control de Prácticas Preprofesionales</h1>
+        <p class="text-xs text-slate-500" id="userGreeting">Cargando datos del usuario...</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="bg-blue-50 text-blue-700 font-semibold text-xs px-3 py-1.5 rounded-full border border-blue-200">
+          Practicante Activo
+        </span>
+        <button onclick="cerrarSesion()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 transition">
+          Cerrar Sesión
+        </button>
+      </div>
+    </header>
+
+    <!-- Dashboard Principal -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Action Card -->
+      <div class="dashtail-card p-6 flex flex-col justify-between md:col-span-1">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Registro diario</h2>
+        <div class="space-y-3">
+          <button onclick="marcarEntrada()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm">
+            ⏱️ Marcar Entrada
+          </button>
+          <button onclick="marcarSalida()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-slate-700 font-medium py-2.5 rounded-lg transition border border-slate-300">
+            🏁 Marcar Salida
+          </button>
+        </div>
+        <div id="statusMessage" class="mt-4 text-xs text-center font-medium"></div>
+      </div>
+
+      <!-- Total de Horas -->
+      <div class="dashtail-card p-6 flex flex-col justify-center items-center md:col-span-2">
+        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Horas Acumuladas Totales</span>
+        <div class="text-5xl font-extrabold text-blue-600 mt-2" id="totalHoursDisplay">0.00 hrs</div>
+        <p class="text-xs text-slate-400 mt-2">Calculado automáticamente desde PostgreSQL</p>
+      </div>
+    </div>
+
+    <!-- Historial de Marcaciones -->
+    <div class="dashtail-card p-6">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Historial de Marcajes</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-600">
+          <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
+            <tr>
+              <th class="p-3">Entrada</th>
+              <th class="p-3">Salida</th>
+              <th class="p-3">Horas</th>
+              <th class="p-3">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody" class="divide-y divide-slate-100">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const USER_ID = localStorage.getItem('userId');
+    const USER_NAME = localStorage.getItem('userName');
+
+    async function inicializar() {
+      // Si no hay ID en sesión, volver al login
+      if (!USER_ID) {
+        window.location.href = '/login.html';
+        return;
+      }
+
+      document.getElementById('userGreeting').innerText = `Practicante: ${USER_NAME || 'Usuario'}`;
+      await cargarHistorial();
+    }
+
+    async function cargarHistorial() {
+      try {
+        const res = await fetch(`/api/attendance/history/${USER_ID}`);
+        const json = await res.json();
+        
+        if (json.success) {
+          document.getElementById('totalHoursDisplay').innerText = `${json.data.totalHours.toFixed(2)} hrs`;
+          const tbody = document.getElementById('historyTableBody');
+          
+          if (json.data.logs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-xs text-slate-400">Sin marcajes registrados aún</td></tr>`;
+            return;
+          }
+
+          tbody.innerHTML = json.data.logs.map(log => `
+            <tr>
+              <td class="p-3">${new Date(log.check_in).toLocaleString()}</td>
+              <td class="p-3">${log.check_out ? new Date(log.check_out).toLocaleString() : '-'}</td>
+              <td class="p-3 font-semibold">${log.total_hours ? log.total_hours + ' hrs' : 'En curso'}</td>
+              <td class="p-3">
+                <span class="px-2 py-1 text-xs rounded ${log.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                  ${log.status}
+                </span>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Error al cargar historial:', err);
+      }
+    }
+
+    async function marcarEntrada() {
+      const res = await fetch('/api/attendance/check-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: USER_ID })
+      });
+      const json = await res.json();
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.innerText = json.message;
+      statusDiv.className = `mt-4 text-xs text-center font-medium ${json.success ? 'text-green-600' : 'text-red-600'}`;
+      cargarHistorial();
+    }
+
+    async function marcarSalida() {
+      const res = await fetch('/api/attendance/check-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: USER_ID })
+      });
+      const json = await res.json();
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.innerText = json.message;
+      statusDiv.className = `mt-4 text-xs text-center font-medium ${json.success ? 'text-green-600' : 'text-red-600'}`;
+      cargarHistorial();
+    }
+
+    function cerrarSesion() {
+      localStorage.clear();
+      window.location.href = '/login.html';
+    }
+
+    window.onload = inicializar;
+  </script>
+</body>
+</html>

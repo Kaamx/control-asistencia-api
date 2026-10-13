@@ -1,0 +1,42 @@
+/* Estilos personalizados con temática Dashtail Light Mode */
+:root {
+  --primary-blue: #2563EB;
+  --primary-hover: #1D4ED8;
+  --bg-main: #F8FAFC;
+  --card-bg: #FFFFFF;
+  --border-color: #E2E8F0;
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: 'Inter', sans-serif;
+}
+
+.dashtail-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.dashtail-btn-primary {
+  background-color: var(--primary-blue);
+  color: #FFFFFF;
+  transition: background-color 0.2s ease;
+}
+
+.dashtail-btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.dashtail-table th {
+  background-color: #F1F5F9;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
