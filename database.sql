@@ -1,4 +1,4 @@
--- Ejecutar en PostgreSQL (pgAdmin):
+-- Ejecutar en PostgreSQL (pgAdmin, psql, etc.):
 -- CREATE DATABASE control_asistencia;
 
 -- Conectarse a la base de datos 'control_asistencia' y ejecutar lo siguiente:
