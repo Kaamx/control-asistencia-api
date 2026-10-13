@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-// Registrar un nuevo usuario (practicante o admin)
+// Registrar un nuevo usuario (practicante por defecto)
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -26,7 +26,7 @@ exports.register = async (req, res) => {
     res.status(201).json({ 
       success: true, 
       message: 'Usuario registrado exitosamente', 
-      data: newUser.rows[0] 
+      user: newUser.rows[0] 
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -38,7 +38,6 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Buscar el usuario por email
     const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return res.status(401).json({ success: false, message: 'Credenciales inválidas (correo no encontrado).' });
@@ -46,7 +45,6 @@ exports.login = async (req, res) => {
 
     const user = result.rows[0];
 
-    // Comparar la contraseña ingresada con el hash de la BD
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Contraseña incorrecta.' });

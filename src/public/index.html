@@ -13,7 +13,6 @@
 </head>
 <body class="p-6 md:p-10">
   <div class="max-w-5xl mx-auto space-y-6">
-    <!-- Barra de Navegación Superior -->
     <header class="dashtail-card p-5 flex justify-between items-center">
       <div>
         <h1 class="text-xl font-bold text-slate-800">Control de Prácticas Preprofesionales</h1>
@@ -29,23 +28,20 @@
       </div>
     </header>
 
-    <!-- Dashboard Principal -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- Action Card -->
       <div class="dashtail-card p-6 flex flex-col justify-between md:col-span-1">
         <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Registro diario</h2>
         <div class="space-y-3">
           <button onclick="marcarEntrada()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition shadow-sm">
             ⏱️ Marcar Entrada
           </button>
-          <button onclick="marcarSalida()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-slate-700 font-medium py-2.5 rounded-lg transition border border-slate-300">
+          <button onclick="marcarSalida()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-lg transition border border-slate-300">
             🏁 Marcar Salida
           </button>
         </div>
         <div id="statusMessage" class="mt-4 text-xs text-center font-medium"></div>
       </div>
 
-      <!-- Total de Horas -->
       <div class="dashtail-card p-6 flex flex-col justify-center items-center md:col-span-2">
         <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Horas Acumuladas Totales</span>
         <div class="text-5xl font-extrabold text-blue-600 mt-2" id="totalHoursDisplay">0.00 hrs</div>
@@ -53,7 +49,6 @@
       </div>
     </div>
 
-    <!-- Historial de Marcaciones -->
     <div class="dashtail-card p-6">
       <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Historial de Marcajes</h2>
       <div class="overflow-x-auto">
@@ -66,8 +61,7 @@
               <th class="p-3">Estado</th>
             </tr>
           </thead>
-          <tbody id="historyTableBody" class="divide-y divide-slate-100">
-          </tbody>
+          <tbody id="historyTableBody" class="divide-y divide-slate-100"></tbody>
         </table>
       </div>
     </div>
@@ -78,12 +72,10 @@
     const USER_NAME = localStorage.getItem('userName');
 
     async function inicializar() {
-      // Si no hay ID en sesión, volver al login
       if (!USER_ID) {
         window.location.href = '/login.html';
         return;
       }
-
       document.getElementById('userGreeting').innerText = `Practicante: ${USER_NAME || 'Usuario'}`;
       await cargarHistorial();
     }
