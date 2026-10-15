@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
+const { verifyToken, verifyAdmin } = require('../middlewares/authMiddleware');
 
-// Ruta: GET /api/admin/reports
-router.get('/reports', adminController.getGlobalReport);
+router.get('/reports', verifyToken, verifyAdmin, adminController.getReports);
 
 module.exports = router;
