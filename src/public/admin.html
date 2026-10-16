@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Panel de Administrador - Control de Prácticas</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Librería para leer y escribir archivos Excel (.xlsx, .xls) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #1E293B; }
@@ -13,19 +15,54 @@
 </head>
 <body class="p-6 md:p-10">
   <div class="max-w-6xl mx-auto space-y-6">
-    <header class="dashtail-card p-5 flex justify-between items-center">
+    <header class="dashtail-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
         <h1 class="text-xl font-bold text-slate-800">Panel de Supervisión (Ingeniero)</h1>
-        <p class="text-xs text-slate-500">Reporte general y detalle de sesiones por practicante</p>
+        <p class="text-xs text-slate-500">Reporte general, sesiones y gestión de horarios por practicante</p>
       </div>
-      <button onclick="cerrarSesion()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 transition">
-        Cerrar Sesión
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Botón de Exportación -->
+        <button onclick="exportarReporteExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm">
+          📊 Exportar Reporte Excel
+        </button>
+        <button onclick="cerrarSesion()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 transition">
+          Cerrar Sesión
+        </button>
+      </div>
     </header>
 
+    <!-- Carga e Importación Masiva de Horarios -->
     <div class="dashtail-card p-6">
-      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Listado de Practicantes y Sesiones</h2>
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Carga Masiva de Horarios (Excel / CSV)</h2>
       
+      <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center mb-4 bg-slate-50/50 hover:bg-slate-50 transition" id="dropZone">
+        <p class="text-xs text-slate-500 mb-2">Arrastra aquí los archivos (Excel o CSV) con los horarios del equipo</p>
+        <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" class="text-xs text-slate-500">
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">O pega el horario copiado desde Excel / Correo:</label>
+      <textarea id="textPaste" placeholder="Correo | Nombre | Día | Inicio | Fin | Actividad" class="w-full text-xs p-3 border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-600" rows="3"></textarea>
+
+      <div class="flex flex-wrap gap-2">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition" id="btnAnalyzeText">Analizar y Guardar Texto</button>
+        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-lg border border-slate-300 transition" id="btnDownloadTemplate">Descargar Plantilla CSV</button>
+      </div>
+      
+      <div id="errorContainer" class="mt-4"></div>
+      <div id="successContainer" class="mt-4"></div>
+    </div>
+
+    <!-- Listado de Practicantes, Búsqueda y Pestañas -->
+    <div class="dashtail-card p-6 space-y-4">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider">Listado de Practicantes y Supervisión</h2>
+        
+        <!-- Barra de Búsqueda -->
+        <div class="w-full md:w-72">
+          <input type="text" id="searchInput" placeholder="Buscar por nombre o correo..." oninput="filtrarPracticantes()" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+        </div>
+      </div>
+
       <div id="practicantsContainer" class="space-y-6">
         <!-- Se llena dinámicamente -->
       </div>
@@ -33,6 +70,314 @@
   </div>
 
   <script>
+    let globalPracticantesData = []; // Variable global para almacenar los datos
+
+    // --- UTILIDADES DEL ANALIZADOR DE HORARIOS ---
+    const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    const DK = {lu:0, ma:1, mi:2, ju:3, vi:4, sa:5, do:6};
+    const norm = s => String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    
+    function parseHora(v){
+      if(v===''||v==null)return null;
+      if(typeof v==='number')return v<1?Math.round(v*1440):(v<=24?Math.round(v*60):null);
+      const m=norm(v).match(/^(\d{1,2})(?:[:.h](\d{2}))?\s*(?:h|hrs?|horas)?\s*(am|pm|a\.m\.|p\.m\.)?$/);
+      if(!m)return null;
+      let h=+m[1],mi=+(m[2]||0);const ap=m[3]&&m[3][0];
+      if(ap==='p'&&h<12)h+=12;if(ap==='a'&&h===12)h=0;
+      return h>24||mi>59?null:h*60+mi;
+    }
+    
+    const parseDi = t => {
+      t = t.trim();
+      if(t.length === 1) {
+        const v = {l:0, m:1, x:2, j:3, v:4, s:5, d:6}[t];
+        return v === undefined ? -1 : v;
+      }
+      const k = t.slice(0, 2);
+      return k in DK ? DK[k] : -1;
+    };
+    
+    function parseDias(v){
+      const s = norm(v), out = new Set();
+      if(/todos|diari/.test(s)) return [0,1,2,3,4,5,6];
+      s.split(/\s*(?:,|;|\/|\by\b|\be\b)\s*/).forEach(p=>{
+        if(!p)return;
+        const r = p.split(/\s*[-–—]\s*|\s+(?:a|al|hasta)\s+/).filter(Boolean).map(parseDi);
+        if(r.length === 2 && r[0] >= 0 && r[1] >= 0) {
+          if(r[0] <= r[1]) {
+            for(let k = r[0]; k <= r[1]; k++) out.add(k);
+          } else {
+            for(let k = r[0]; k <= 6; k++) out.add(k);
+            for(let k = 0; k <= r[1]; k++) out.add(k);
+          }
+        } else if(r.length === 1 && r[0] >= 0) out.add(r[0]);
+      });
+      return [...out];
+    }
+
+    function parseTipo(raw){
+      const n = norm(raw);
+      if(!n) return 'Trabajo';
+      if(/practic|pasant|intern/.test(n)) return 'Prácticas';
+      if(/trabaj|laboral|empleo|oficina|turno/.test(n)) return 'Trabajo';
+      if(/clase|curso|univers|estud|taller|semin/.test(n)) return 'Clases';
+      return 'Otro';
+    }
+
+    function parseCsv(t){
+      const l = t.replace(/^\ufeff/,'').split(/\r?\n/).filter(x=>x.trim());
+      if(!l.length) return [];
+      const dl = [';','\t',','].map(d=>[d, l[0].split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+      return l.map(s=>{
+        const o=[]; let c=''; let q=false;
+        for(const ch of s){
+          if(ch === '"') q = !q;
+          else if(ch === dl && !q) { o.push(c); c=''; }
+          else c += ch;
+        }
+        o.push(c);
+        return o.map(x=>x.trim());
+      });
+    }
+
+    async function procesarYEnviarHorarios(rows, sourceName) {
+      const hi = rows.findIndex(r => r.filter(c => /correo|email|dia|inicio|fin|entrada|salida|hora|nombre|actividad|desde|hasta/.test(norm(c))).length >= 2);
+      if (hi < 0) {
+        document.getElementById('errorContainer').innerHTML = `<p class="text-xs text-red-600">No se encontraron los encabezados correctos en ${sourceName}.</p>`;
+        return;
+      }
+
+      const H = rows[hi].map(norm), col = re => H.findIndex(h => re.test(h));
+      const cn = col(/nombre|persona|practicante|alumno|estudiante/), cd = col(/^dia|dias/), ci = col(/inicio|entrada|desde/),
+            cf = col(/fin$|^fin|salida|hasta|termino/), ca = col(/actividad|tipo|detalle|descripcion|motivo/), ce = col(/correo|email/);
+
+      if (cd < 0) {
+        alert('Falta la columna "Día".');
+        return;
+      }
+
+      let ld = '', ln = '', le = '';
+      const extractedSchedules = [];
+
+      for (let k = hi + 1; k < rows.length; k++) {
+        const r = rows[k];
+        if (!r || r.every(c => c === '' || c == null)) continue;
+        if (cd >= 0 && String(r[cd]).trim()) ld = r[cd];
+        if (cn >= 0 && String(r[cn]).trim()) ln = String(r[cn]).trim();
+        if (ce >= 0 && String(r[ce]).trim()) le = String(r[ce]).trim();
+
+        const ti = parseHora(r[ci]);
+        const tf = parseHora(r[cf]);
+        const ds = parseDias(ld);
+
+        if (!ds.length || ti == null || tf == null || tf <= ti) continue;
+
+        const rawActivity = String(ca >= 0 ? r[ca] : '').trim();
+        const activityType = parseTipo(rawActivity);
+        const formatTime = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') + ':00';
+
+        ds.forEach(day => {
+          extractedSchedules.push({
+            email: le || `${norm(ln).replace(/\s+/g, '')}@empresa.com`,
+            day_of_week: day,
+            start_time: formatTime(ti),
+            end_time: formatTime(tf),
+            activity_type: activityType
+          });
+        });
+      }
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/admin/import-schedules', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ schedulesData: extractedSchedules })
+        });
+
+        const json = await res.json();
+        if (json.success) {
+          document.getElementById('successContainer').innerHTML = `<p class="text-xs text-emerald-600 font-semibold">${json.message}</p>`;
+          document.getElementById('errorContainer').innerHTML = '';
+          document.getElementById('textPaste').value = '';
+          cargarReporteAdmin();
+        } else {
+          let errorMsg = json.message || 'Error al guardar horarios.';
+          if (json.notFoundEmails) {
+            errorMsg += `<br><span class="text-slate-500">Correos no encontrados: ${json.notFoundEmails.join(', ')}</span>`;
+          }
+          document.getElementById('errorContainer').innerHTML = `<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">${errorMsg}</div>`;
+          document.getElementById('successContainer').innerHTML = '';
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error de conexión con el servidor.');
+      }
+    }
+
+    // --- FUNCIÓN GLOBAL PARA CAMBIAR PESTAÑAS ---
+    window.cambiarTab = function(userId, tabName) {
+      const horariosContent = document.getElementById(`tab-horarios-${userId}`);
+      const sesionesContent = document.getElementById(`tab-sesiones-${userId}`);
+      const btnHorarios = document.getElementById(`btn-horarios-${userId}`);
+      const btnSesiones = document.getElementById(`btn-sesiones-${userId}`);
+
+      if (tabName === 'horarios') {
+        horariosContent.classList.remove('hidden');
+        sesionesContent.classList.add('hidden');
+        btnHorarios.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition";
+        btnSesiones.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition";
+      } else {
+        horariosContent.classList.add('hidden');
+        sesionesContent.classList.remove('hidden');
+        btnSesiones.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition";
+        btnHorarios.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition";
+      }
+    };
+
+    // --- FUNCIÓN PARA EXPORTAR REPORTE A EXCEL ---
+    function exportarReporteExcel() {
+      if (!globalPracticantesData || globalPracticantesData.length === 0) {
+        alert('No hay datos para exportar.');
+        return;
+      }
+
+      const excelData = [];
+      excelData.push(['REPORTE GENERAL DE PRÁCTICAS Y ASISTENCIAS']);
+      excelData.push(['Fecha de exportación:', new Date().toLocaleDateString()]);
+      excelData.push([]); 
+
+      excelData.push(['ID', 'Nombre', 'Correo', 'Fecha Registro', 'Horas Acumuladas Totales', 'Total Sesiones Realizadas']);
+
+      globalPracticantesData.forEach(user => {
+        excelData.push([
+          user.id,
+          user.name,
+          user.email,
+          new Date(user.created_at).toLocaleDateString(),
+          parseFloat(user.total_accumulated_hours || 0).toFixed(2),
+          user.sessions ? user.sessions.length : 0
+        ]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Reporte General');
+      XLSX.writeFile(wb, `Reporte_Practicas_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    // --- RENDERIZAR LISTA DE PRACTICANTES ---
+    function renderizarLista(data) {
+      const container = document.getElementById('practicantsContainer');
+      
+      if (!data || data.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No se encontraron practicantes.</p>`;
+        return;
+      }
+
+      container.innerHTML = data.map(user => `
+        <div class="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-4">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-200 pb-3">
+            <div>
+              <h3 class="font-bold text-slate-800 text-base">${user.name}</h3>
+              <p class="text-xs text-slate-500">${user.email} | Registrado el: ${new Date(user.created_at).toLocaleDateString()}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg text-blue-700 font-bold text-sm">
+                Total: ${parseFloat(user.total_accumulated_hours || 0).toFixed(2)} hrs
+              </div>
+            </div>
+          </div>
+
+          <!-- Botones de Pestañas (Tabs) -->
+          <div class="flex gap-2 border-b border-slate-200 pb-3">
+            <button onclick="cambiarTab(${user.id}, 'horarios')" id="btn-horarios-${user.id}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition">
+              📅 Horarios Asignados
+            </button>
+            <button onclick="cambiarTab(${user.id}, 'sesiones')" id="btn-sesiones-${user.id}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">
+              ⏱️ Historial de Sesiones (${user.sessions ? user.sessions.length : 0})
+            </button>
+          </div>
+
+          <!-- Contenido de la Pestaña: Horarios Asignados -->
+          <div id="tab-horarios-${user.id}">
+            <div class="bg-white rounded-lg border border-slate-200 p-3 text-xs text-slate-600">
+              ${
+                !user.schedules || user.schedules.length === 0
+                ? `<p class="text-slate-400 py-2 text-center">Sin horarios asignados todavía.</p>`
+                : `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">` + 
+                  user.schedules.map(sch => `
+                    <div class="bg-slate-50 border border-slate-200 p-2.5 rounded flex justify-between items-center">
+                      <div>
+                        <span class="font-bold text-slate-700">${DIAS[sch.day_of_week] || 'Día'}</span>
+                        <div class="text-[11px] text-slate-500">${sch.start_time.slice(0,5)} -${sch.end_time.slice(0,5)}</div>
+                      </div>
+                      <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">${sch.activity_type}</span>
+                    </div>
+                  `).join('') + `</div>`
+              }
+            </div>
+          </div>
+
+          <!-- Contenido de la Pestaña: Historial de Sesiones -->
+          <div id="tab-sesiones-${user.id}" class="hidden">
+            <div class="overflow-x-auto bg-white rounded-lg border border-slate-200">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-100 text-slate-500 uppercase border-b border-slate-200">
+                  <tr>
+                    <th class="p-2.5">Entrada</th>
+                    <th class="p-2.5">Salida</th>
+                    <th class="p-2.5">Horas de Sesión</th>
+                    <th class="p-2.5">Estado</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${
+                    !user.sessions || user.sessions.length === 0 
+                    ? `<tr><td colspan="4" class="p-3 text-center text-slate-400">Sin sesiones registradas todavía</td></tr>`
+                    : user.sessions.map(session => {
+                        let badgeColor = 'bg-slate-100 text-slate-700';
+                        if (session.status === 'A tiempo') badgeColor = 'bg-green-100 text-green-700';
+                        else if (session.status === 'Tardanza') badgeColor = 'bg-red-100 text-red-700';
+                        else if (session.status === 'completed') badgeColor = 'bg-blue-100 text-blue-700';
+                        else badgeColor = 'bg-amber-100 text-amber-700';
+
+                        return `
+                          <tr>
+                            <td class="p-2.5">${new Date(session.check_in).toLocaleString()}</td>
+                            <td class="p-2.5">${session.check_out ? new Date(session.check_out).toLocaleString() : '-'}</td>
+                            <td class="p-2.5 font-semibold">${session.total_hours ? session.total_hours + ' hrs' : 'En curso'}</td>
+                            <td class="p-2.5">
+                              <span class="px-2 py-0.5 rounded text-[10px] font-medium ${badgeColor}">
+                                ${session.status}
+                              </span>
+                            </td>
+                          </tr>
+                        `;
+                      }).join('')
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      `).join('');
+    }
+
+    // --- FILTRADO EN TIEMPO REAL ---
+    function filtrarPracticantes() {
+      const query = norm(document.getElementById('searchInput').value);
+      const filtrados = globalPracticantesData.filter(user => 
+        norm(user.name).includes(query) || norm(user.email).includes(query)
+      );
+      renderizarLista(filtrados);
+    }
+
+    // --- CARGA DE REPORTES ---
     async function cargarReporteAdmin() {
       const role = localStorage.getItem('userRole');
       const token = localStorage.getItem('token');
@@ -55,66 +400,11 @@
         const json = await res.json();
         
         if (json.success) {
-          const container = document.getElementById('practicantsContainer');
-          
-          if (!json.data || json.data.length === 0) {
-            container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay practicantes registrados aún.</p>`;
-            return;
-          }
-
-          container.innerHTML = json.data.map(user => `
-            <div class="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-4">
-              <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-slate-200 pb-3">
-                <div>
-                  <h3 class="font-bold text-slate-800 text-base">${user.name}</h3>
-                  <p class="text-xs text-slate-500">${user.email} | Registrado el: ${new Date(user.created_at).toLocaleDateString()}</p>
-                </div>
-                <div class="bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg text-blue-700 font-bold text-sm">
-                  Total: ${parseFloat(user.total_accumulated_hours || 0).toFixed(2)} hrs
-                </div>
-              </div>
-
-              <!-- Tabla de sesiones individuales de este practicante -->
-              <div>
-                <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Historial de Sesiones Registradas</h4>
-                <div class="overflow-x-auto bg-white rounded-lg border border-slate-200">
-                  <table class="w-full text-left text-xs text-slate-600">
-                    <thead class="bg-slate-100 text-slate-500 uppercase border-b border-slate-200">
-                      <tr>
-                        <th class="p-2.5">Entrada</th>
-                        <th class="p-2.5">Salida</th>
-                        <th class="p-2.5">Horas de Sesión</th>
-                        <th class="p-2.5">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                      ${
-                        !user.sessions || user.sessions.length === 0 
-                        ? `<tr><td colspan="4" class="p-3 text-center text-slate-400">Sin sesiones registradas todavía</td></tr>`
-                        : user.sessions.map(session => `
-                          <tr>
-                            <td class="p-2.5">${new Date(session.check_in).toLocaleString()}</td>
-                            <td class="p-2.5">${session.check_out ? new Date(session.check_out).toLocaleString() : '-'}</td>
-                            <td class="p-2.5 font-semibold">${session.total_hours ? session.total_hours + ' hrs' : 'En curso'}</td>
-                            <td class="p-2.5">
-                              <span class="px-2 py-0.5 rounded text-[10px] font-medium ${session.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
-                                ${session.status}
-                              </span>
-                            </td>
-                          </tr>
-                        `).join('')
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          `).join('');
-        } else {
-          alert(json.message || 'No se pudieron cargar los reportes.');
+          globalPracticantesData = json.data || [];
+          renderizarLista(globalPracticantesData);
         }
       } catch (error) {
-        console.error('Error de conexión:', error);
+        console.error('Error al cargar reportes:', error);
       }
     }
 
@@ -122,6 +412,40 @@
       localStorage.clear();
       window.location.href = '/login.html';
     }
+
+    // --- MANEJO DE EVENTOS ---
+    document.getElementById('btnAnalyzeText').onclick = () => {
+      const text = document.getElementById('textPaste').value;
+      if (!text.trim()) return;
+      procesarYEnviarHorarios(parseCsv(text), 'Texto pegado');
+    };
+
+    document.getElementById('btnDownloadTemplate').onclick = () => {
+      const csvContent = '\ufeffCorreo;Nombre;Día;Inicio;Fin;Actividad\npracticante@empresa.com;Ana Pérez;Lunes-Domingo;08:00;13:00;Prácticas\n';
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'plantilla_horarios.csv';
+      a.click();
+    };
+
+    const fileInput = document.getElementById('fileInput');
+    fileInput.onchange = async (e) => {
+      const files = e.target.files;
+      for (const file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'xlsx' || ext === 'xls') {
+          const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          await procesarYEnviarHorarios(rows, file.name);
+        } else {
+          const text = await file.text();
+          await procesarYEnviarHorarios(parseCsv(text), file.name);
+        }
+      }
+      fileInput.value = '';
+    };
 
     window.onload = cargarReporteAdmin;
   </script>

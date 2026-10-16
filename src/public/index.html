@@ -28,6 +28,7 @@
       </div>
     </header>
 
+    <!-- Sección de Marcaje y Horas -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div class="dashtail-card p-6 flex flex-col justify-between md:col-span-1">
         <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Registro diario</h2>
@@ -49,6 +50,63 @@
       </div>
     </div>
 
+    <!-- Sección Mi Horario Semanal -->
+    <div class="dashtail-card p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider">Mi Horario Semanal</h2>
+        <button onclick="toggleFormHorario()" class="bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-200 transition">
+          ✏️ Editar / Configurar Horario
+        </button>
+      </div>
+
+      <!-- Vista Tarjetas de Horario Asignado -->
+      <div id="myScheduleContainer" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
+        <p class="text-slate-400 text-center col-span-full py-2">Cargando horario...</p>
+      </div>
+
+      <!-- Formulario Visual e Interactivo para Editar Horario -->
+      <div id="scheduleFormSection" class="hidden border-t border-slate-200 pt-5 mt-2 space-y-4">
+        <h3 class="text-xs font-bold text-slate-700 uppercase">Configuración Visual de Horario</h3>
+        
+        <!-- Días de la semana -->
+        <div>
+          <label class="block text-xs text-slate-500 mb-1 font-semibold">1. Selecciona los días de la semana:</label>
+          <div class="flex flex-wrap gap-2 text-xs" id="daysSelector">
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="0" class="day-checkbox"> Lun</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="1" class="day-checkbox"> Mar</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="2" class="day-checkbox"> Mié</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="3" class="day-checkbox"> Jue</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="4" class="day-checkbox"> Vie</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="5" class="day-checkbox"> Sáb</label>
+            <label class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded cursor-pointer hover:bg-slate-100"><input type="checkbox" value="6" class="day-checkbox"> Dom</label>
+          </div>
+        </div>
+
+        <!-- Horas y Tipo de Actividad -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <label class="block text-slate-500 mb-1 font-semibold">2. Hora de Inicio:</label>
+            <input type="time" id="inputStartTime" value="08:00" class="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1 font-semibold">3. Hora de Fin:</label>
+            <input type="time" id="inputEndTime" value="13:00" class="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+          </div>
+          <div>
+            <label class="block text-slate-500 mb-1 font-semibold">4. Actividad / Detalle:</label>
+            <input type="text" id="inputActivity" value="Prácticas" placeholder="Ej: Prácticas Preprofesionales" class="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white">
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button onclick="toggleFormHorario()" class="bg-slate-100 text-slate-600 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300">Cancelar</button>
+          <button onclick="guardarMiHorarioVisual()" class="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition">Guardar Mi Horario</button>
+        </div>
+        <div id="scheduleMsg" class="text-xs text-center font-medium mt-2"></div>
+      </div>
+    </div>
+
+    <!-- Historial de Marcajes -->
     <div class="dashtail-card p-6">
       <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-4">Historial de Marcajes</h2>
       <div class="overflow-x-auto">
@@ -70,6 +128,7 @@
   <script>
     const USER_ID = localStorage.getItem('userId');
     const USER_NAME = localStorage.getItem('userName');
+    const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
     async function inicializar() {
       if (!USER_ID) {
@@ -78,11 +137,15 @@
       }
       document.getElementById('userGreeting').innerText = `Practicante: ${USER_NAME || 'Usuario'}`;
       await cargarHistorial();
+      await cargarMiHorario();
     }
 
     async function cargarHistorial() {
       try {
-        const res = await fetch(`/api/attendance/history/${USER_ID}`);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/attendance/history/${USER_ID}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         const json = await res.json();
         
         if (json.success) {
@@ -94,29 +157,115 @@
             return;
           }
 
-          tbody.innerHTML = json.data.logs.map(log => `
-            <tr>
-              <td class="p-3">${new Date(log.check_in).toLocaleString()}</td>
-              <td class="p-3">${log.check_out ? new Date(log.check_out).toLocaleString() : '-'}</td>
-              <td class="p-3 font-semibold">${log.total_hours ? log.total_hours + ' hrs' : 'En curso'}</td>
-              <td class="p-3">
-                <span class="px-2 py-1 text-xs rounded ${log.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
-                  ${log.status}
-                </span>
-              </td>
-            </tr>
-          `).join('');
+          tbody.innerHTML = json.data.logs.map(log => {
+            let badgeColor = 'bg-amber-100 text-amber-700';
+            if (log.status === 'A tiempo') badgeColor = 'bg-green-100 text-green-700';
+            else if (log.status === 'Tardanza') badgeColor = 'bg-red-100 text-red-700';
+
+            return `
+              <tr>
+                <td class="p-3">${new Date(log.check_in).toLocaleString()}</td>
+                <td class="p-3">${log.check_out ? new Date(log.check_out).toLocaleString() : '-'}</td>
+                <td class="p-3 font-semibold">${log.total_hours ? log.total_hours + ' hrs' : 'En curso'}</td>
+                <td class="p-3">
+                  <span class="px-2 py-1 text-xs rounded ${badgeColor}">
+                    ${log.status}
+                  </span>
+                </td>
+              </tr>
+            `;
+          }).join('');
         }
       } catch (err) {
         console.error('Error al cargar historial:', err);
       }
     }
 
+    async function cargarMiHorario() {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/attendance/history/${USER_ID}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+        const container = document.getElementById('myScheduleContainer');
+
+        if (json.success && json.data.schedules && json.data.schedules.length > 0) {
+          container.innerHTML = json.data.schedules.map(s => `
+            <div class="bg-slate-50 border border-slate-200 p-2 rounded text-center">
+              <span class="font-bold text-slate-700 block">${DIAS[s.day_of_week]}</span>
+              <span class="text-slate-500 text-[11px] block">${s.start_time.slice(0,5)} - ${s.end_time.slice(0,5)}</span>
+              <span class="text-[10px] text-blue-600 font-medium">${s.activity_type}</span>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = `<p class="text-slate-400 text-center col-span-full py-2">Sin horario asignado. Presiona "Editar / Configurar Horario" para registrarlo.</p>`;
+        }
+      } catch (err) {
+        console.error('Error al cargar horario:', err);
+      }
+    }
+
+    function toggleFormHorario() {
+      const sec = document.getElementById('scheduleFormSection');
+      sec.classList.toggle('hidden');
+    }
+
+    // Guardado desde la interfaz de casillas de verificación e inputs de tiempo
+    async function guardarMiHorarioVisual() {
+      const selectedDays = Array.from(document.querySelectorAll('.day-checkbox:checked')).map(cb => parseInt(cb.value));
+      const startTime = document.getElementById('inputStartTime').value;
+      const endTime = document.getElementById('inputEndTime').value;
+      const activity = document.getElementById('inputActivity').value.trim() || 'Prácticas';
+      const msgDiv = document.getElementById('scheduleMsg');
+
+      if (selectedDays.length === 0) {
+        msgDiv.innerHTML = '<span class="text-red-600">Debes seleccionar al menos un día de la semana.</span>';
+        return;
+      }
+
+      if (!startTime || !endTime || startTime >= endTime) {
+        msgDiv.innerHTML = '<span class="text-red-600">La hora de inicio debe ser anterior a la hora de fin.</span>';
+        return;
+      }
+
+      const schedules = selectedDays.map(day => ({
+        day_of_week: day,
+        start_time: startTime + ':00',
+        end_time: endTime + ':00',
+        activity_type: activity
+      }));
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/attendance/my-schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ schedules })
+        });
+
+        const json = await res.json();
+        if (json.success) {
+          msgDiv.innerHTML = '<span class="text-emerald-600 font-semibold">¡Horario actualizado correctamente!</span>';
+          setTimeout(() => {
+            toggleFormHorario();
+            cargarMiHorario();
+            msgDiv.innerHTML = '';
+          }, 1200);
+        } else {
+          msgDiv.innerHTML = `<span class="text-red-600">${json.message}</span>`;
+        }
+      } catch (err) {
+        msgDiv.innerHTML = '<span class="text-red-600">Error de conexión al guardar el horario.</span>';
+      }
+    }
+
     async function marcarEntrada() {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/attendance/check-in', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: USER_ID })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({})
       });
       const json = await res.json();
       const statusDiv = document.getElementById('statusMessage');
@@ -126,10 +275,11 @@
     }
 
     async function marcarSalida() {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/attendance/check-out', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: USER_ID })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({})
       });
       const json = await res.json();
       const statusDiv = document.getElementById('statusMessage');

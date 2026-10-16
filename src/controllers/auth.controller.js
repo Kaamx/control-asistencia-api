@@ -12,7 +12,7 @@ if (!JWT_SECRET) {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     const userExists = await pool.query(
       'SELECT id FROM users WHERE email = $1',
@@ -28,7 +28,9 @@ exports.register = async (req, res, next) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const userRole = role || 'intern';
+    // El rol siempre es 'intern' en el registro público.
+    // La asignación de roles privilegiados requiere acción de un admin.
+    const userRole = 'intern';
 
     const newUser = await pool.query(
       'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
